@@ -1,0 +1,20 @@
+export const IPC_CHANNELS = {
+    configGet: "config:get",
+    configUpdate: "config:update",
+    configChanged: "config:changed",
+    petBoundsChanged: "pet:bounds:changed",
+    petCursorChanged: "pet:cursor:changed",
+    petActionTriggered: "pet:action:triggered",
+    petActionTrigger: "pet:action:trigger",
+    petDragStart: "pet:drag:start",
+    petDragMove: "pet:drag:move",
+    petDragEnd: "pet:drag:end",
+    petPositionPreview: "pet:position:preview",
+    petPositionUpdate: "pet:position:update",
+    petPositionReset: "pet:position:reset",
+    petVisibilitySet: "pet:visibility:set",
+    petClickThroughSet: "pet:click-through:set",
+    appAutoLaunchSet: "app:auto-launch:set",
+    settingsOpen: "settings:open",
+    appQuit: "app:quit"
+};

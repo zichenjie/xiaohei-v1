@@ -1,0 +1,24 @@
+appId: com.local.xiaohei.desktoppet
+productName: 罗小黑桌宠
+directories:
+  output: release
+files:
+  - dist/**
+  - package.json
+extraResources:
+  - from: material
+    to: material
+  - from: assets
+    to: assets
+win:
+  target:
+    - nsis
+    - portable
+  icon: assets/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+portable:
+  artifactName: XiaoHeiDesktopPet-${version}-portable.exe

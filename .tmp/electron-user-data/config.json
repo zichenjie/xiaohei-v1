@@ -1,0 +1,27 @@
+{
+	"config": {
+		"window": {
+			"x": 1337,
+			"y": 359,
+			"scale": 0.8,
+			"alwaysOnTop": false,
+			"clickThrough": false,
+			"locked": false,
+			"visible": true
+		},
+		"pet": {
+			"behaviorMode": "quiet",
+			"modelPath": "material/罗小黑免费模型/罗小黑免费模型.model3.json",
+			"followMouse": true
+		},
+		"system": {
+			"autoLaunch": false
+		},
+		"ai": {
+			"enabled": false,
+			"provider": "none",
+			"model": ""
+		},
+		"schemaVersion": 1
+	}
+}

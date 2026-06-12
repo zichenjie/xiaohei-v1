@@ -1,0 +1,14 @@
+[2026-06-11T12:01:34.972Z] Unhandled rejection
+Error: ERR_CONNECTION_REFUSED (-102) loading 'http://127.0.0.1:5180/settings.html'
+Error: ERR_CONNECTION_REFUSED (-102) loading 'http://127.0.0.1:5180/settings.html'
+    at rejectAndCleanup (node:electron/js2c/browser_init:2:78856)
+    at WebContents.finishListener (node:electron/js2c/browser_init:2:79018)
+    at WebContents.emit (node:events:518:28)
+
+[2026-06-11T12:22:59.761Z] Unhandled rejection
+Error: ERR_CONNECTION_REFUSED (-102) loading 'http://127.0.0.1:5180/settings.html'
+Error: ERR_CONNECTION_REFUSED (-102) loading 'http://127.0.0.1:5180/settings.html'
+    at rejectAndCleanup (node:electron/js2c/browser_init:2:78856)
+    at WebContents.finishListener (node:electron/js2c/browser_init:2:79018)
+    at WebContents.emit (node:events:518:28)
+
