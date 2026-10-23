@@ -1,9 +1,9 @@
 {
 	"config": {
 		"window": {
-			"x": 1337,
-			"y": 359,
-			"scale": 0.8,
+			"x": 1359,
+			"y": 351,
+			"scale": 0.4,
 			"alwaysOnTop": false,
 			"clickThrough": false,
 			"locked": false,

@@ -87,12 +87,6 @@ button.active {
   gap: 8px;
 }
 
-.action-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
-  gap: 8px;
-}
-
 .scale-row span {
   min-width: 36px;
 }
@@ -119,3 +113,5 @@ code {
   margin-top: 8px;
   color: #b42318;
 }
+
+.setting-hint { color: #667085; font-size: 12px; margin: 10px 0; }

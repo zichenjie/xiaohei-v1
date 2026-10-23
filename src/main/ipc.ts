@@ -3,12 +3,23 @@ import { isPetActionName } from "../shared/actions.js";
 import { IPC_CHANNELS, type ConfigPatch } from "../shared/ipc.js";
 import { loadConfig, updateConfig } from "./config.js";
 import type { AppConfig } from "../shared/types.js";
+import type { WalkDirection } from "../shared/walk.js";
+import { isPetStatus } from "../shared/status.js";
 import { setAutoLaunch } from "./autostart.js";
 import { refreshTrayMenu } from "./tray.js";
 import {
   applyPetWindowConfig,
   createPetWindow,
   getPetWindow,
+  cancelPetActionMove,
+  movePetWindowForAction,
+  ensurePetWalkDirectionAvailable,
+  hideActionsWindow,
+  openActionsWindow,
+  openStatusWindow,
+  closeStatusWindow,
+  publishPetStatus,
+  getPetStatus,
   movePetWindowBy,
   previewPetWindowPosition,
   resetPetWindowPosition,
@@ -109,6 +120,11 @@ function configPatch(patch: unknown): ConfigPatch {
     if (typeof source.pet.followMouse === "boolean") {
       petPatch.followMouse = source.pet.followMouse;
     }
+    if (["quiet", "balanced", "active"].includes(String(source.pet.initiative))) {
+      petPatch.initiative = source.pet.initiative as AppConfig["pet"]["initiative"];
+    }
+    if (typeof source.pet.autoRest === "boolean") petPatch.autoRest = source.pet.autoRest;
+    if (typeof source.pet.quietUntil === "number" && Number.isFinite(source.pet.quietUntil)) petPatch.quietUntil = source.pet.quietUntil;
 
     result.pet = petPatch;
   }
@@ -131,7 +147,14 @@ function applyConfigSideEffects(config: AppConfig): AppConfig {
   return config;
 }
 
-export function registerIpcHandlers(openSettings: () => void): void {
+export function registerIpcHandlers(openSettings: () => void | Promise<unknown>): void {
+  let requestedWalkDirection: WalkDirection | undefined;
+  ipcMain.handle(IPC_CHANNELS.petStatusOpen, () => openStatusWindow());
+  ipcMain.handle(IPC_CHANNELS.petStatusClose, () => closeStatusWindow());
+  ipcMain.handle(IPC_CHANNELS.petStatusGet, () => getPetStatus());
+  ipcMain.on(IPC_CHANNELS.petStatusPublish, (event, status: unknown) => {
+    if (event.sender === getPetWindow()?.webContents && isPetStatus(status)) publishPetStatus(status);
+  });
   ipcMain.handle(IPC_CHANNELS.configGet, () => loadConfig());
 
   ipcMain.handle(IPC_CHANNELS.configUpdate, (_event, patch: unknown) => {
@@ -139,15 +162,39 @@ export function registerIpcHandlers(openSettings: () => void): void {
     return applyConfigSideEffects(config);
   });
 
-  ipcMain.handle(IPC_CHANNELS.petActionTrigger, async (_event, action: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.petActionTrigger, async (_event, action: unknown, direction: unknown) => {
     if (!isPetActionName(action)) {
       return;
     }
 
+    if (direction !== undefined && (action !== "Move" || (direction !== "left" && direction !== "right"))) {
+      throw new Error("移动方向无效");
+    }
     const petWindow = getPetWindow() ?? (await createPetWindow());
+    if (action === "Move" && direction) ensurePetWalkDirectionAvailable(direction as WalkDirection);
+    requestedWalkDirection = action === "Move" ? direction as WalkDirection | undefined : undefined;
+    cancelPetActionMove();
+    if (action === "Move") {
+      if (loadConfig().window.locked) return;
+    }
     console.log(`[main] trigger pet action: ${action}`);
     petWindow.webContents.send(IPC_CHANNELS.petActionTriggered, action);
+    hideActionsWindow();
   });
+
+  ipcMain.handle(IPC_CHANNELS.petWalkStart, (event, pixelsPerUnit: unknown) => {
+    if (event.sender !== getPetWindow()?.webContents) return;
+    if (typeof pixelsPerUnit !== "number" || !Number.isFinite(pixelsPerUnit) || pixelsPerUnit <= 0 || pixelsPerUnit > 10000) return;
+    const direction = requestedWalkDirection;
+    requestedWalkDirection = undefined;
+    movePetWindowForAction(pixelsPerUnit, direction);
+  });
+  ipcMain.handle(IPC_CHANNELS.petWalkStop, (event) => {
+    if (event.sender === getPetWindow()?.webContents) cancelPetActionMove();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.petActionsOpen, async () => { await openActionsWindow(); });
+  ipcMain.handle(IPC_CHANNELS.petActionsClose, () => hideActionsWindow());
 
   ipcMain.handle(IPC_CHANNELS.petDragStart, () => {
     startPetWindowDrag();
@@ -197,6 +244,8 @@ export function registerIpcHandlers(openSettings: () => void): void {
     return applyConfigSideEffects(config);
   });
 
-  ipcMain.handle(IPC_CHANNELS.settingsOpen, () => openSettings());
+  ipcMain.handle(IPC_CHANNELS.settingsOpen, async () => {
+    await openSettings();
+  });
   ipcMain.handle(IPC_CHANNELS.appQuit, () => app.quit());
 }

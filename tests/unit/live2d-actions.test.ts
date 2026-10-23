@@ -50,6 +50,7 @@ describe("Live2D action catalog", () => {
 
   it("keeps generated motion metadata aligned with curve segments", () => {
     const generatedMotionFiles = [
+      "弹跳.motion3.json",
       "睡觉.motion3.json",
       "醒来.motion3.json",
       "打招呼.motion3.json",

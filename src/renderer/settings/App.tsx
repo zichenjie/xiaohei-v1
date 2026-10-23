@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { PET_ACTIONS } from "../../shared/actions.js";
-import type { PetActionName } from "../../shared/ipc.js";
 import type { AppConfig, BehaviorMode } from "../../shared/types.js";
 import "./styles.css";
 
@@ -15,6 +13,8 @@ export function SettingsApp() {
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 10000); return () => window.clearInterval(timer); }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -78,15 +78,6 @@ export function SettingsApp() {
     await applyUpdate(window.xiaohei.app.setAutoLaunch(enabled));
   }
 
-  async function triggerAction(action: PetActionName) {
-    try {
-      setError(null);
-      await window.xiaohei.pet.triggerAction(action);
-    } catch (err) {
-      setError(errorMessage(err));
-    }
-  }
-
   if (!config) {
     return (
       <main className="settings">
@@ -130,6 +121,24 @@ export function SettingsApp() {
           />
           鼠标跟随
         </label>
+      </section>
+
+      <section>
+        <h2>主动陪伴</h2>
+        <div className="segmented" role="group" aria-label="主动程度">
+          {([ ["quiet", "安静"], ["balanced", "适中"], ["active", "活泼"] ] as const).map(([value, label]) =>
+            <button key={value} aria-pressed={config.pet.initiative === value} className={config.pet.initiative === value ? "active" : ""}
+              onClick={() => void applyUpdate(window.xiaohei.config.update({ pet: { initiative: value } }))}>{label}</button>)}
+        </div>
+        <p className="setting-hint">按心情和精力偶尔做小表情：适中约隔 5–8 分钟，活泼约隔 4–7 分钟，每小时最多 6 次。安静时暂停主动表情和邀请。</p>
+        <p className="setting-hint">邀请你互动的气泡：适中约 10–15 分钟、活泼约 8–12 分钟才可能出现；每小时最多两次，未回应会延长间隔。</p>
+        <label><input type="checkbox" checked={config.pet.autoRest}
+          onChange={(event) => void applyUpdate(window.xiaohei.config.update({ pet: { autoRest: event.target.checked } }))} />累了自己休息</label>
+        <p className="setting-hint">至少 20 分钟没有互动、精力较低时入睡，点击头部唤醒。</p>
+        <button onClick={() => void applyUpdate(window.xiaohei.config.update({ pet: { quietUntil: config.pet.quietUntil > now ? 0 : Date.now() + 3600000 } }))}>
+          {config.pet.quietUntil > now ? "恢复主动邀请" : "安静一小时"}
+        </button>
+        {config.pet.quietUntil > now ? <p className="setting-hint">正在安静陪伴，仍可互动，也会正常休息。</p> : null}
       </section>
 
       <section>
@@ -178,17 +187,6 @@ export function SettingsApp() {
           />
           开机自启
         </label>
-      </section>
-
-      <section>
-        <h2>动作</h2>
-        <div className="action-grid" role="group" aria-label="动作触发">
-          {PET_ACTIONS.map((item) => (
-            <button key={item.name} type="button" onClick={() => void triggerAction(item.name)}>
-              {item.label}
-            </button>
-          ))}
-        </div>
       </section>
 
       <section>

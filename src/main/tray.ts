@@ -33,7 +33,6 @@ export function createTray(): Tray {
   }
 
   tray = new Tray(nativeImage.createFromPath(resolveResourcePath("assets/tray.ico")));
-  tray.setToolTip("罗小黑桌宠");
   refreshTrayMenu();
   return tray;
 }

@@ -14,6 +14,8 @@ describe("IPC channels", () => {
     expect(IPC_CHANNELS.petPositionUpdate).toBe("pet:position:update");
     expect(IPC_CHANNELS.petVisibilitySet).toBe("pet:visibility:set");
     expect(IPC_CHANNELS.petClickThroughSet).toBe("pet:click-through:set");
+    expect(IPC_CHANNELS.petActionsOpen).toBe("pet:actions:open");
+    expect(IPC_CHANNELS.petActionsClose).toBe("pet:actions:close");
     expect(IPC_CHANNELS.appAutoLaunchSet).toBe("app:auto-launch:set");
     expect(IPC_CHANNELS.settingsOpen).toBe("settings:open");
     expect(IPC_CHANNELS.appQuit).toBe("app:quit");

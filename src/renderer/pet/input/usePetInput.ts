@@ -1,157 +1,43 @@
-import { useCallback, useEffect, useRef, type PointerEvent } from "react";
+import { useEffect, useRef, type PointerEvent } from "react";
+import { createPointerInteraction, type InputHandlers, type PointerSample } from "./pointerInteraction.js";
 
-const DRAG_THRESHOLD_PX = 4;
-const DOUBLE_CLICK_MS = 260;
-
-interface PetInputHandlers {
-  locked: boolean;
-  onClick(): void;
-  onDoubleClick(): void;
-  onDragStart(): void;
-  onDragMove(delta: { dx: number; dy: number }): void;
-  onDragEnd(delta: { dx: number; dy: number }): void;
-  onHoverStart(): void;
-  onHoverEnd(): void;
-  onFocus(point: { x: number; y: number }): void;
-}
-
-interface PointerStart {
-  pointerId: number;
-  mouseX: number;
-  mouseY: number;
-}
-
-export function usePetInput(handlers: PetInputHandlers) {
-  const dragging = useRef(false);
-  const moved = useRef(false);
-  const start = useRef<PointerStart | null>(null);
-  const currentDelta = useRef<{ dx: number; dy: number } | null>(null);
-  const clickTimer = useRef<number | null>(null);
-
-  const clearClickTimer = useCallback(() => {
-    if (clickTimer.current !== null) {
-      window.clearTimeout(clickTimer.current);
-      clickTimer.current = null;
-    }
-  }, []);
-
+export function usePetInput(handlers: InputHandlers) {
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+  const controllerRef = useRef<ReturnType<typeof createPointerInteraction> | null>(null);
+  if (!controllerRef.current) controllerRef.current = createPointerInteraction(() => handlersRef.current);
+  const controller = controllerRef.current;
+  const sample = (event: PointerEvent): PointerSample => ({
+    x: event.clientX, y: event.clientY, screenX: event.screenX, screenY: event.screenY, pointerId: event.pointerId
+  });
   useEffect(() => {
-    return () => {
-      clearClickTimer();
-    };
-  }, [clearClickTimer]);
-
-  const onPointerDown = useCallback(
-    (event: PointerEvent<HTMLElement>) => {
-      if (handlers.locked || event.button !== 0) {
-        return;
-      }
-
-      event.currentTarget.setPointerCapture(event.pointerId);
-      dragging.current = false;
-      moved.current = false;
-      start.current = {
-        pointerId: event.pointerId,
-        mouseX: event.screenX,
-        mouseY: event.screenY
-      };
-    },
-    [handlers]
-  );
-
-  const onPointerMove = useCallback(
-    (event: PointerEvent<HTMLElement>) => {
-      const origin = start.current;
-      if (!dragging.current) {
-        const rect = event.currentTarget.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          handlers.onFocus({
-            x: (event.clientX - rect.left) / rect.width,
-            y: (event.clientY - rect.top) / rect.height
-          });
-        }
-      }
-
-      if (!origin || origin.pointerId !== event.pointerId) {
-        return;
-      }
-
-      const dx = event.screenX - origin.mouseX;
-      const dy = event.screenY - origin.mouseY;
-      if (!moved.current && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
-        moved.current = true;
-        dragging.current = true;
-        handlers.onDragStart();
-      }
-
-      if (dragging.current) {
-        currentDelta.current = {
-          dx: Math.round(dx),
-          dy: Math.round(dy)
-        };
-        handlers.onDragMove(currentDelta.current);
-      }
-    },
-    [handlers]
-  );
-
-  const onPointerUp = useCallback(
-    (event: PointerEvent<HTMLElement>) => {
-      const origin = start.current;
-      if (!origin || origin.pointerId !== event.pointerId) {
-        return;
-      }
-
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
-
-      start.current = null;
-      if (dragging.current) {
-        dragging.current = false;
-        handlers.onDragEnd(currentDelta.current ?? { dx: 0, dy: 0 });
-        currentDelta.current = null;
-        return;
-      }
-
-      if (!moved.current) {
-        if (clickTimer.current !== null) {
-          clearClickTimer();
-          handlers.onDoubleClick();
-          return;
-        }
-
-        clickTimer.current = window.setTimeout(() => {
-          clickTimer.current = null;
-          handlers.onClick();
-        }, DOUBLE_CLICK_MS);
-      }
-    },
-    [clearClickTimer, handlers]
-  );
-
-  const onPointerCancel = useCallback(
-    (event: PointerEvent<HTMLElement>) => {
-      if (!start.current || start.current.pointerId !== event.pointerId) {
-        return;
-      }
-
-      start.current = null;
-      if (dragging.current) {
-        dragging.current = false;
-        handlers.onDragEnd(currentDelta.current ?? { dx: 0, dy: 0 });
-        currentDelta.current = null;
-      }
-    },
-    [handlers]
-  );
+    const cancel = () => controller.cancel();
+    window.addEventListener("blur", cancel);
+    return () => { window.removeEventListener("blur", cancel); cancel(); };
+  }, [controller]);
+  useEffect(() => { controller.lockChanged(); }, [controller, handlers.locked]);
 
   return {
-    onPointerDown,
-    onPointerMove,
-    onPointerUp,
-    onPointerCancel,
-    onPointerEnter: handlers.onHoverStart,
-    onPointerLeave: handlers.onHoverEnd
+    cancel: controller.cancel,
+    bindings: {
+      onPointerDown(event: PointerEvent<HTMLElement>) {
+        if (event.button === 0 && controller.down(sample(event))) event.currentTarget.setPointerCapture(event.pointerId);
+      },
+      onPointerMove(event: PointerEvent<HTMLElement>) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        if (rect.width && rect.height) handlersRef.current.onFocus({ x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height });
+        controller.move(sample(event));
+      },
+      onPointerUp(event: PointerEvent<HTMLElement>) {
+        if (event.button !== 0) return;
+        controller.up(sample(event));
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      },
+      onPointerCancel: controller.cancel,
+      onLostPointerCapture: controller.lostCapture,
+      onContextMenu: controller.cancel,
+      onPointerEnter: handlers.onHoverStart,
+      onPointerLeave: handlers.onHoverEnd
+    }
   };
 }

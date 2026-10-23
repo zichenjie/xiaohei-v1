@@ -1,0 +1,14 @@
+html, body, #root { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+body { font: 14px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif; color: #33483d; user-select: none; }
+.companion-bubble { box-sizing: border-box; margin: 5px; padding: 12px 14px; border: 1px solid #bfd3c5; border-radius: 18px; background: #f7fbf5fa; box-shadow: 0 2px 5px #1d33251c; animation: arrive .32s ease-out both; }
+p { margin: 0 0 9px; white-space: nowrap; }
+.bubble-choices { display: flex; gap: 10px; }
+button { min-height: 30px; padding: 4px 12px; border: 1px solid #b5cebd; border-radius: 12px; background: #dfedde; color: #304f39; font: inherit; font-size: 13px; cursor: pointer; }
+button:hover { background: #d0e5cf; }
+button:disabled { opacity: .6; }
+.quiet-choice { background: transparent; border-color: transparent; color: #6d7b71; }
+.companion-bubble[data-kind="thanks"], .companion-bubble[data-kind="busy"] { margin-top: 25px; animation: arrive .32s ease-out both, leave .25s ease-in 2.65s forwards; }
+.companion-bubble[data-kind="thanks"] p, .companion-bubble[data-kind="busy"] p { margin: 0; }
+.companion-bubble[data-kind="touch"], .companion-bubble[data-kind="play"] { animation: arrive .32s ease-out both, leave .25s ease-in 7.65s forwards; }
+@keyframes arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes leave { to { opacity: 0; transform: translateY(3px); } }

@@ -1,4 +1,5 @@
 export type BehaviorMode = "quiet" | "active";
+export type Initiative = "quiet" | "balanced" | "active";
 
 export interface WindowConfig {
   x: number | null;
@@ -14,6 +15,9 @@ export interface PetConfig {
   behaviorMode: BehaviorMode;
   modelPath: string;
   followMouse: boolean;
+  initiative: Initiative;
+  autoRest: boolean;
+  quietUntil: number;
 }
 
 export interface SystemConfig {

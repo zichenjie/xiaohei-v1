@@ -13,7 +13,10 @@ export const DEFAULT_CONFIG = {
     pet: {
         behaviorMode: "quiet",
         modelPath: DEFAULT_MODEL_PATH,
-        followMouse: true
+        followMouse: true,
+        initiative: "balanced",
+        autoRest: true,
+        quietUntil: 0
     },
     system: {
         autoLaunch: false

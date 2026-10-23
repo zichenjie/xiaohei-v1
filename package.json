@@ -12,10 +12,12 @@
     "build": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "npm run build && playwright test tests/e2e --workers=1",
     "package:win": "npm run build && electron-builder --config electron-builder.yml --win nsis portable",
     "smoke": "npm run build && playwright test tests/e2e/electron-smoke.spec.ts"
   },
   "dependencies": {
+    "@pixi/unsafe-eval": "6.5.10",
     "@vitejs/plugin-react": "^5.0.0",
     "electron-store": "^10.0.0",
     "pixi-live2d-display": "^0.4.0",
@@ -30,7 +32,7 @@
     "@types/react-dom": "^19.0.0",
     "concurrently": "^9.0.0",
     "cross-env": "^7.0.0",
-    "electron": "^35.0.0",
+    "electron": "37.10.3",
     "electron-builder": "^25.0.0",
     "png-to-ico": "^3.0.1",
     "typescript": "^5.8.0",

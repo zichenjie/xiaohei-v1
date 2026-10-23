@@ -1,11 +1,14 @@
 import { _electron as electron, expect, test } from "@playwright/test";
+import { createTestProfile } from "./profile.js";
 
 test("desktop pet launches and exposes config IPC through preload", async () => {
-  const app = await electron.launch({ args: ["."] });
+  const app = await electron.launch(createTestProfile().launchOptions);
 
   try {
     const firstWindow = await app.firstWindow();
     await expect(firstWindow.locator("body")).toBeVisible();
+    await expect(firstWindow).toHaveTitle("");
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getTitle())).toBe("");
 
     const config = await firstWindow.evaluate(async () => {
       return window.xiaohei.config.get();

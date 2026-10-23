@@ -1,4 +1,4 @@
-import{g as ga,a as Gt,b as Io}from"./client-VzTSDoEn.js";/*!
+import{g as ga,a as Gt,b as Io}from"./index-D1t9BEjv.js";/*!
  * @pixi/constants - v6.5.10
  * Compiled Thu, 06 Jul 2023 15:25:11 UTC
  *

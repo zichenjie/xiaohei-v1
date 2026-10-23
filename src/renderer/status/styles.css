@@ -1,0 +1,22 @@
+:root { font-family: "Microsoft YaHei", "Segoe UI", sans-serif; color: #293b32; background: #f4f7f2; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.status-card { padding: 24px; }
+.status-eyebrow { font-size: 12px; letter-spacing: 2px; color: #657b68; }
+h1 { font-size: 23px; margin: 6px 0 8px; }
+.status-activity { font-size: 13px; margin: 0 0 22px; color: #53675b; }
+.status-metrics { display: grid; gap: 14px; }
+.status-metric { padding: 15px; border: 1px solid #dde5da; background: #fffefa; border-radius: 14px; }
+.metric-heading { display: flex; align-items: baseline; gap: 9px; margin-bottom: 12px; }
+h2 { margin: 0; font-size: 14px; }
+.metric-heading > span { font-size: 12px; color: #607064; }
+output { margin-left: auto; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+small { font-size: 11px; color: #68786c; font-weight: 400; }
+.metric-track { height: 8px; overflow: hidden; background: #edf0e8; border-radius: 6px; }
+.metric-fill { height: 100%; border-radius: inherit; background: #d8a567; transition: width 600ms ease; }
+.energy .metric-fill { background: #78a28a; }
+.status-hint { margin: 17px 0; color: #607064; font-size: 12px; line-height: 1.8; }
+button { display: block; width: 100%; padding: 9px 16px; border-radius: 10px; border: 1px solid #cbd9cc; color: #355541; background: #e8eee4; cursor: pointer; font: inherit; font-size: 13px; }
+button:hover { background: #dde7d9; }
+button:focus-visible { outline: 2px solid #527a60; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .metric-fill { transition: none; } }

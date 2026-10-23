@@ -25,7 +25,6 @@ body {
   max-width: 100%;
   max-height: 100%;
   box-sizing: border-box;
-  border: 2px solid rgba(239, 68, 68, 0.95);
   user-select: none;
   touch-action: none;
   pointer-events: none;
@@ -45,20 +44,8 @@ body {
   cursor: grabbing;
 }
 
-.pet-debug-frame {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  z-index: 4;
-  box-sizing: border-box;
-  max-width: calc(100% - 8px);
-  border-radius: 4px;
-  background: rgba(239, 68, 68, 0.88);
-  color: #ffffff;
-  padding: 2px 6px;
-  font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
-  pointer-events: none;
-}
+.pet-root[data-behavior-state="stroking"] .pet-hit-area { cursor: none; }
+.stroke-touch { position: absolute; z-index: 3; left: var(--touch-x); top: var(--touch-y); width: 12px; height: 12px; border: 1.5px solid #eaf5e6dd; border-radius: 50%; background: #cde1cd55; box-shadow: 0 0 8px #d6eacc99; transform: translate(-50%, -50%); pointer-events: none; }
 
 .live2d-stage {
   position: relative;
@@ -99,3 +86,28 @@ body {
 .pet-error {
   color: #7f1d1d;
 }
+
+.pet-gesture { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.gesture-greeting { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); padding: 5px 12px; background: #f6fff4f2; border: 1px solid #b5d6b7; border-radius: 14px 14px 14px 3px; color: #365b3c; font-size: clamp(11px, 4vw, 15px); white-space: nowrap; animation: greeting 2.8s both; }
+.gesture-hand { position: absolute; left: var(--pat-x, 42%); top: var(--pat-y, 28%); width: var(--pat-width, 22%); height: auto; overflow: visible; transform-origin: 50% 89%; animation: petting 2.4s both; }
+.gesture-curious { position: absolute; left: 68%; top: 22%; color: #5c9679; font-size: clamp(22px, 9vw, 38px); font-weight: 700; text-shadow: 0 1px 3px #ffffff; animation: greeting 2.6s both; }
+.gesture-heart { position: absolute; left: 63%; top: 20%; color: #e78eaa; font-size: clamp(20px, 8vw, 32px); text-shadow: 0 1px 3px #ffffff; animation: hearts 3s both; }
+.gesture-sleep { position: absolute; left: 66%; top: 22%; color: #7589ad; font-size: clamp(12px, 5vw, 20px); font-weight: 600; white-space: nowrap; text-shadow: 0 1px 3px white; animation: sleepy 2.6s infinite; }
+@keyframes greeting { 0%, 100% { opacity: 0; } 15%, 80% { opacity: 1; } }
+@keyframes petting { 0%, 100% { opacity: 0; transform: translate(-35%, -130%) rotate(-12deg); } 18%, 45%, 70% { opacity: 1; transform: translate(-55%, -89%) rotate(-4deg); } 30%, 58%, 82% { opacity: 1; transform: translate(-45%, -90%) rotate(3deg); } }
+@keyframes hearts { 0% { opacity: 0; transform: translateY(5px) scale(.7); } 25%, 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px) scale(1.1); } }
+@keyframes sleepy { 0% { opacity: 0; transform: translateY(6px); } 35%, 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
+.reaction-effects { position: absolute; left: var(--face-x, 50%); top: var(--face-y, 35%); width: var(--face-width, 50%); height: var(--face-height, 35%); transform: translate(-50%, -50%); pointer-events: none; container-type: inline-size; animation: reaction-fade var(--effect-duration) both; }
+.reaction-symbol { position: absolute; color: #649d82; font-size: clamp(12px, 15cqw, 32px); font-weight: 600; text-shadow: 0 1px 3px #ffffffe6; }
+.reaction-agree { left: 88%; top: 16%; color: #619a7d; }
+.reaction-star { left: 87%; top: 22%; color: #d9ac5b; animation: reaction-spark var(--effect-duration) both; }
+.reaction-star-small { left: 75%; top: 5%; color: #e3bf75; font-size: clamp(9px, 9cqw, 21px); animation: reaction-spark var(--effect-duration) both; }
+.reaction-lines, .reaction-blush { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.reaction-lines { fill: none; stroke: #83a79b; stroke-width: 1.8; stroke-linecap: round; }
+.reaction-blush { fill: #e598a0; opacity: .48; filter: blur(1.5px); }
+.reaction-yawn { left: 81%; top: 22%; color: #8798ad; white-space: nowrap; }
+.reaction-note { left: 4%; top: 8%; color: #6c9e8d; animation: reaction-float var(--effect-duration) both; }
+.reaction-note-second { left: 88%; top: 30%; color: #b093bb; animation: reaction-float var(--effect-duration) both reverse; }
+@keyframes reaction-fade { 0%, 100% { opacity: 0; } 18%, 70% { opacity: 1; } }
+@keyframes reaction-spark { 0%, 22%, 85%, 100% { opacity: 0; transform: scale(.6) rotate(-15deg); } 38%, 62% { opacity: 1; transform: scale(1) rotate(8deg); } }
+@keyframes reaction-float { 0% { opacity: 0; transform: translateY(6px) rotate(-8deg); } 25%, 65% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px) rotate(8deg); } }

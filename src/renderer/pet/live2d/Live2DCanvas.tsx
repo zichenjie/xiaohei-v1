@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createLive2DAdapter, type Live2DAdapter } from "./Live2DAdapter.js";
 import type { Live2DAction } from "../behavior/behaviorMachine.js";
-import type { PetExpressionName, PetMotionName } from "../../../shared/actions.js";
+import { isPetReactionName, type PetExpressionName, type PetMotionName } from "../../../shared/actions.js";
+import { chooseIdle, isSoftAction, type CompanionState, type SoftAction, type TouchTarget } from "../behavior/companion.js";
 
 export interface Live2DCommand {
   id: number;
@@ -15,6 +16,10 @@ interface Live2DCanvasProps {
   onReady(): void;
   onError(error: Error): void;
   onMotionFinished(): void;
+  onActionStarted(action: Live2DAction): void;
+  touchHitTestRef: { current: ((point: { x: number; y: number }) => TouchTarget) | null };
+  headAnchorRef: { current: (() => { x: number; y: number; width: number } | null) | null };
+  presenceRef: { current: { companion: CompanionState; strokeX: number } };
 }
 
 const MOTION_ACTIONS = new Set<Live2DAction>([
@@ -53,13 +58,41 @@ export function Live2DCanvas({
   focusPoint,
   onReady,
   onError,
-  onMotionFinished
+  onMotionFinished,
+  onActionStarted,
+  touchHitTestRef,
+  headAnchorRef,
+  presenceRef
 }: Live2DCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const adapterRef = useRef<Live2DAdapter | null>(null);
   const lastTapActionRef = useRef<"Greet" | "Curious" | "Happy" | "Pat" | null>(null);
-  const lastIdleActionRef = useRef<"Idle" | "Sleep" | "Greet" | "Curious" | null>(null);
+  const lastIdleActionRef = useRef<SoftAction | null>(null);
   const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!ready || (command.action !== "Pat" && command.action !== "Tap" && !isPetReactionName(command.action))) return;
+    let frame = 0;
+    const update = () => {
+      const anchor = adapterRef.current?.getHeadAnchor();
+      const target = canvasRef.current?.closest<HTMLElement>(".pet-hit-area");
+      if (anchor && target) {
+        target.style.setProperty("--pat-x", `${anchor.x}px`);
+        target.style.setProperty("--pat-y", `${anchor.y}px`);
+        target.style.setProperty("--pat-width", `${anchor.width}px`);
+      }
+      const face = adapterRef.current?.getFaceAnchor();
+      if (face && target) {
+        target.style.setProperty("--face-x", `${face.x}px`);
+        target.style.setProperty("--face-y", `${face.y}px`);
+        target.style.setProperty("--face-width", `${face.width}px`);
+        target.style.setProperty("--face-height", `${face.height}px`);
+      }
+      frame = requestAnimationFrame(update);
+    };
+    update();
+    return () => cancelAnimationFrame(frame);
+  }, [ready, command.id, command.action]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -68,8 +101,10 @@ export function Live2DCanvas({
     }
 
     let active = true;
-    const adapter = createLive2DAdapter();
+    const adapter = createLive2DAdapter(() => presenceRef.current);
     adapterRef.current = adapter;
+    touchHitTestRef.current = (point) => adapter.hitTest(point);
+    headAnchorRef.current = () => adapter.getHeadAnchor();
     setReady(false);
 
     adapter
@@ -93,13 +128,16 @@ export function Live2DCanvas({
       adapter.dispose();
       if (adapterRef.current === adapter) {
         adapterRef.current = null;
+        touchHitTestRef.current = null;
+        headAnchorRef.current = null;
       }
     };
-  }, [modelPath, onError, onReady]);
+  }, [modelPath, onError, onReady, touchHitTestRef, presenceRef, headAnchorRef]);
 
   useEffect(() => {
     const action = command.action;
     console.info(`[live2d] command ${command.id}: ${action}, ready=${ready}`);
+    if (action === "none") onActionStarted(action);
     if (!ready || action === "none") {
       return;
     }
@@ -109,27 +147,27 @@ export function Live2DCanvas({
       console.info(`[live2d] command ${command.id}: adapter not ready`);
       return;
     }
+    let active = true;
 
     const run = async (): Promise<void> => {
-      const playComposite = async (nextAction: Live2DAction): Promise<void> => {
+      const playComposite = async (nextAction: Live2DAction): Promise<boolean> => {
+        onActionStarted(nextAction);
         if (nextAction === "DragStart") {
-          await adapter.playModelMove();
-          return;
+          return adapter.playMotion("Idle", { restart: true });
         }
 
         if (nextAction === "Move") {
-          await adapter.playModelMove();
-          return;
+          return adapter.playModelMove();
         }
 
         if (isMotionAction(nextAction)) {
-          await adapter.playMotion(nextAction, { restart: true });
-          return;
+          return adapter.playMotion(nextAction, { restart: true });
         }
 
         if (isExpressionAction(nextAction)) {
           await adapter.setExpression(nextAction, { restart: true });
         }
+        return false;
       };
 
       if (action === "Tap") {
@@ -138,18 +176,22 @@ export function Live2DCanvas({
           lastTapActionRef.current
         );
         lastTapActionRef.current = nextAction;
-        await playComposite(nextAction);
-        onMotionFinished();
+        if (await playComposite(nextAction) && active) onMotionFinished();
         return;
       }
 
       if (action === "IdleVariant") {
-        const nextAction = randomNonRepeating(
-          ["Idle", "Sleep", "Greet", "Curious"] as const,
-          lastIdleActionRef.current
-        );
+        const nextAction = chooseIdle(presenceRef.current.companion, lastIdleActionRef.current);
         lastIdleActionRef.current = nextAction;
-        await playComposite(nextAction);
+        onActionStarted(nextAction);
+        if (await adapter.playReaction(nextAction) && active) onMotionFinished();
+        return;
+      }
+
+      if (isSoftAction(action)) {
+        onActionStarted(action);
+        const completed = await adapter.playReaction(action);
+        if (action !== "Stroke" && completed && active) onMotionFinished();
         return;
       }
 
@@ -161,35 +203,38 @@ export function Live2DCanvas({
         action === "Move" ||
         action === "DragStart"
       ) {
-        await playComposite(action);
-        if (action === "Happy") {
-          onMotionFinished();
-        }
+        if (await playComposite(action) && active) onMotionFinished();
         return;
       }
 
       if (isMotionAction(action)) {
-        await adapter.playMotion(action, { restart: true });
-        if (action !== "Idle" && action !== "Sleep") {
+        onActionStarted(action);
+        const completed = await adapter.playMotion(action, { restart: true });
+        if (completed && active && action !== "Idle" && action !== "Sleep") {
           onMotionFinished();
         }
         return;
       }
 
       if (isExpressionAction(action)) {
+        onActionStarted(action);
         await adapter.setExpression(action, { restart: true });
       }
     };
 
-    void run().catch((error: Error) => onError(error));
-  }, [command, onError, onMotionFinished, ready]);
+    void run().catch((error: Error) => { if (active) onError(error); });
+    return () => {
+      active = false;
+      adapter.cancelMotion();
+    };
+  }, [command, onActionStarted, onError, onMotionFinished, ready, presenceRef]);
 
   useEffect(() => {
     if (!ready || !focusPoint) {
       return;
     }
 
-    adapterRef.current?.focus(focusPoint, { instant: true });
+    adapterRef.current?.focus(focusPoint);
   }, [focusPoint, ready]);
 
   useEffect(() => {

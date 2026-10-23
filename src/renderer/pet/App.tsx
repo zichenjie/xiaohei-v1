@@ -8,8 +8,11 @@ import {
 } from "./behavior/behaviorMachine.js";
 import { usePetInput } from "./input/usePetInput.js";
 import { Live2DCanvas, type Live2DCommand } from "./live2d/Live2DCanvas.js";
-import type { PetActionName } from "../../shared/ipc.js";
+import { PatHand } from "./PatHand.js";
+import { advanceCompanion, COMPANION_STORAGE_KEY, restoreCompanion, rewardInteraction, type CompanionState, type TouchTarget } from "./behavior/companion.js";
+import { ActionEffects } from "./ActionEffects.js";
 import "./styles.css";
+import { useAutonomy } from "./behavior/useAutonomy.js";
 
 type LoadState = "config" | "model" | "ready";
 const COOLDOWN_MS = 700;
@@ -20,23 +23,56 @@ function clampUnit(value: number): number {
   return Math.min(Math.max(value, 0), 1);
 }
 
-function toLive2DAction(action: PetActionName): Live2DAction {
-  return action;
-}
-
 export function PetApp() {
+  const [companion, setCompanion] = useState<CompanionState>(() => {
+    try { return restoreCompanion(JSON.parse(localStorage.getItem(COMPANION_STORAGE_KEY) ?? "null")); }
+    catch { return restoreCompanion(null); }
+  });
+  const presenceRef = useRef({ companion, strokeX: 0 });
+  const cancelInputRef = useRef<(() => void) | null>(null);
+  const strokeOriginRef = useRef(0);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("config");
   const [command, setCommand] = useState<Live2DCommand>({ id: 0, action: "Idle" });
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
-  const [debugSize, setDebugSize] = useState({ width: window.innerWidth, height: window.innerHeight });
-  const [mainBounds, setMainBounds] = useState<{ width: number; height: number } | null>(null);
+  const [behaviorState, setBehaviorState] = useState("idle");
+  const [visualAction, setVisualAction] = useState<{ id: number; action: Live2DAction }>({ id: 0, action: "Idle" });
   const machineRef = useRef<BehaviorMachine>(createBehaviorMachine("quiet"));
   const modelPathRef = useRef<string | null>(null);
   const cooldownTimerRef = useRef<number | null>(null);
   const idleTimerRef = useRef<number | null>(null);
   const hitAreaRef = useRef<HTMLDivElement | null>(null);
+  const touchHitTestRef = useRef<((point: { x: number; y: number }) => TouchTarget) | null>(null);
+  const headAnchorRef = useRef<(() => { x: number; y: number; width: number } | null) | null>(null);
+  const autonomyRef = useRef<ReturnType<typeof useAutonomy> | null>(null);
+
+  useEffect(() => {
+    window.xiaohei.status.publish({
+      energy: companion.energy,
+      mood: companion.mood,
+      activity: error ? "error" : loadState !== "ready" ? "loading"
+        : behaviorState === "sleeping" ? "sleeping" : behaviorState === "stroking" ? "stroking"
+        : ["clicked", "dragging"].includes(behaviorState) ? "playing" : "awake"
+    });
+  }, [companion, behaviorState, loadState, error]);
+
+  useEffect(() => {
+    let previous = Date.now();
+    let ticks = 0;
+    const save = () => { try { localStorage.setItem(COMPANION_STORAGE_KEY, JSON.stringify(presenceRef.current.companion)); } catch { /* Storage may be unavailable. */ } };
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      const state = machineRef.current.snapshot().state;
+      const next = advanceCompanion(presenceRef.current.companion, (now - previous) / 1000, state === "sleeping" ? "sleeping" : state === "stroking" ? "stroking" : "awake", now);
+      previous = now;
+      presenceRef.current.companion = next;
+      setCompanion(next);
+      if (++ticks % 15 === 0) save();
+    }, 1000);
+    window.addEventListener("pagehide", save);
+    return () => { window.clearInterval(timer); window.removeEventListener("pagehide", save); save(); };
+  }, []);
 
   const clearIdleTimer = useCallback(() => {
     if (idleTimerRef.current !== null) {
@@ -54,11 +90,12 @@ export function PetApp() {
 
   useEffect(() => {
     let active = true;
+    let configChanged = false;
 
     window.xiaohei.config
       .get()
       .then((nextConfig) => {
-        if (active) {
+        if (active && !configChanged) {
           modelPathRef.current = nextConfig.pet.modelPath;
           setConfig(nextConfig);
           setLoadState("model");
@@ -71,11 +108,13 @@ export function PetApp() {
       });
 
     const unsubscribe = window.xiaohei.config.onChanged((nextConfig) => {
+      configChanged = true;
       const modelChanged = modelPathRef.current !== nextConfig.pet.modelPath;
       modelPathRef.current = nextConfig.pet.modelPath;
       setConfig(nextConfig);
       setError(null);
       if (modelChanged) {
+        cancelInputRef.current?.();
         setLoadState("model");
       }
     });
@@ -104,43 +143,47 @@ export function PetApp() {
     setCommand((current) => ({ id: current.id + 1, action }));
   }, []);
 
-  useEffect(() => {
-    return window.xiaohei.pet.onActionTriggered((action) => {
-      console.log(`Pet action triggered: ${action}`);
-      clearCooldownTimer();
-      clearIdleTimer();
-      triggerAction(toLive2DAction(action));
-    });
-  }, [clearCooldownTimer, clearIdleTimer, triggerAction]);
-
-  useEffect(() => {
-    const updateDebugSize = () => setDebugSize({ width: window.innerWidth, height: window.innerHeight });
-    updateDebugSize();
-    window.addEventListener("resize", updateDebugSize);
-    return () => window.removeEventListener("resize", updateDebugSize);
-  }, []);
-
-  useEffect(() => {
-    return window.xiaohei.pet.onBoundsChanged((bounds) => {
-      setMainBounds({ width: bounds.width, height: bounds.height });
-    });
-  }, []);
-
-  const send = useCallback((event: BehaviorEvent) => {
+  const send = useCallback((event: BehaviorEvent, autonomous = false) => {
     const machine = machineRef.current;
+    if (!machine.send(event)) {
+      return;
+    }
+    if (!autonomous && ["click", "double:click", "hold:start", "hold:end", "drag:start", "drag:end", "action"].includes(event.type)) {
+      autonomyRef.current?.interact(["action", "drag:start", "drag:end"].includes(event.type) ? "manual" : "attention");
+    }
     if (
       event.type === "click" ||
       event.type === "double:click" ||
       event.type === "hold:start" ||
       event.type === "drag:start" ||
+      event.type === "action" ||
+      event.type === "recover" ||
       event.type === "error"
     ) {
       clearCooldownTimer();
-      clearIdleTimer();
     }
-    machine.send(event);
+    setBehaviorState(machine.snapshot().state);
+    if (event.type === "drag:start") {
+      setCommand((current) => ({ id: current.id + 1, action: "none" }));
+    }
     triggerAction(machine.snapshot().nextAction);
-  }, [clearCooldownTimer, clearIdleTimer, triggerAction]);
+  }, [clearCooldownTimer, triggerAction]);
+
+  const autonomy = useAutonomy({
+    config, ready: loadState === "ready" && !error, state: behaviorState, visualAction: visualAction.action, companion,
+    anchor: () => {
+      const anchor = headAnchorRef.current?.();
+      const bounds = hitAreaRef.current?.getBoundingClientRect();
+      return anchor && bounds ? { ...anchor, x: anchor.x + bounds.left + anchor.width * 0.44, y: anchor.y + bounds.top } : null;
+    },
+    act: (action) => send({ type: "action", action }, true)
+  });
+  autonomyRef.current = autonomy;
+
+  useEffect(() => window.xiaohei.pet.onActionTriggered((action) => {
+    cancelInputRef.current?.();
+    send({ type: "action", action });
+  }), [send]);
 
   const finishCooldownSoon = useCallback(() => {
     clearCooldownTimer();
@@ -156,11 +199,15 @@ export function PetApp() {
     }
 
     const [minMs, maxMs] = config.pet.behaviorMode === "active" ? ACTIVE_IDLE_RANGE_MS : QUIET_IDLE_RANGE_MS;
-    const delay = minMs + Math.round(Math.random() * (maxMs - minMs));
-    idleTimerRef.current = window.setTimeout(() => {
-      idleTimerRef.current = null;
-      send({ type: "idle:tick" });
-    }, delay);
+    const schedule = () => {
+      const delay = minMs + Math.round(Math.random() * (maxMs - minMs));
+      idleTimerRef.current = window.setTimeout(() => {
+        idleTimerRef.current = null;
+        if (autonomyRef.current?.canPlayIdle()) send({ type: "idle:tick" }, true);
+        schedule();
+      }, delay);
+    };
+    schedule();
 
     return clearIdleTimer;
   }, [clearIdleTimer, command.id, config?.pet.behaviorMode, loadState, send]);
@@ -177,11 +224,33 @@ export function PetApp() {
     void window.xiaohei.pet.endDrag(delta).catch((err: Error) => setError(err.message));
   }, []);
 
+  const clickTarget = useCallback((point: { x: number; y: number }): TouchTarget => {
+    const bounds = hitAreaRef.current?.getBoundingClientRect();
+    return bounds ? touchHitTestRef.current?.({ x: point.x - bounds.left, y: point.y - bounds.top }) ?? "none" : "none";
+  }, []);
+
+  const updateStroke = useCallback((point: { x: number; y: number }) => {
+    const bounds = hitAreaRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    presenceRef.current.strokeX = Math.max(-1, Math.min(1, (point.x - strokeOriginRef.current) / (bounds.width * 0.16)));
+    hitAreaRef.current?.style.setProperty("--touch-x", `${point.x - bounds.left}px`);
+    hitAreaRef.current?.style.setProperty("--touch-y", `${point.y - bounds.top}px`);
+  }, []);
+
   const inputHandlers = useMemo(
     () => ({
       locked: config?.window.locked ?? false,
-      onClick: () => send({ type: "click" }),
-      onDoubleClick: () => send({ type: "double:click" }),
+      targetAt: clickTarget,
+      canStroke: () => !["sleeping", "error", "dragging"].includes(machineRef.current.snapshot().state),
+      onStrokeStart: (point: { x: number; y: number }) => {
+        strokeOriginRef.current = point.x;
+        updateStroke(point);
+        send({ type: "hold:start" });
+      },
+      onStrokeMove: updateStroke,
+      onStrokeEnd: () => { presenceRef.current.strokeX = 0; send({ type: "hold:end" }); finishCooldownSoon(); },
+      onClick: (point: { x: number; y: number }) => send({ type: "click", target: clickTarget(point) }),
+      onDoubleClick: (point: { x: number; y: number }) => send({ type: "double:click", target: clickTarget(point) }),
       onDragStart: () => {
         startDrag();
         send({ type: "drag:start" });
@@ -189,6 +258,7 @@ export function PetApp() {
       onDragMove: moveDrag,
       onDragEnd: (delta: { dx: number; dy: number }) => {
         send({ type: "drag:end" });
+        finishCooldownSoon();
         endDrag(delta);
       },
       onHoverStart: () => send({ type: "hover:start" }),
@@ -210,9 +280,10 @@ export function PetApp() {
         });
       }
     }),
-    [config, endDrag, moveDrag, send, startDrag]
+    [config, endDrag, finishCooldownSoon, moveDrag, send, startDrag, clickTarget, updateStroke]
   );
   const input = usePetInput(inputHandlers);
+  cancelInputRef.current = input.cancel;
 
   useEffect(() => {
     if (!config?.pet.followMouse) {
@@ -295,9 +366,25 @@ export function PetApp() {
   }, [triggerAction]);
 
   const handleMotionFinished = useCallback(() => {
+    if (autonomyRef.current?.finishRest()) return;
+    autonomyRef.current?.finishActivity();
+    setVisualAction((current) => ({ id: current.id + 1, action: "Idle" }));
     send({ type: "motion:finished" });
-    finishCooldownSoon();
+    if (machineRef.current.snapshot().state === "cooldown") {
+      finishCooldownSoon();
+    }
   }, [finishCooldownSoon, send]);
+
+  const handleActionStarted = useCallback((action: Live2DAction) => {
+    const next = rewardInteraction(presenceRef.current.companion, action, autonomyRef.current?.activity !== action);
+    presenceRef.current.companion = next;
+    setCompanion(next);
+    if (action === "Sleep") {
+      machineRef.current.send({ type: "sleep:started" });
+      setBehaviorState(machineRef.current.snapshot().state);
+    }
+    setVisualAction((current) => ({ id: current.id + 1, action }));
+  }, []);
 
   if (error) {
     return <div className="pet-message pet-error">模型加载失败: {error}</div>;
@@ -308,12 +395,8 @@ export function PetApp() {
   }
 
   return (
-    <main className="pet-root">
-      <div className="pet-debug-frame" aria-hidden="true">
-        view {debugSize.width}x{debugSize.height}
-        {mainBounds ? ` · win ${mainBounds.width}x${mainBounds.height}` : ""} · {command.action}
-      </div>
-      <div ref={hitAreaRef} className="pet-hit-area" {...input}>
+    <main className="pet-root" data-action={command.action} data-autonomy={autonomy.phase} data-visual-action={visualAction.action} data-behavior-state={behaviorState} data-energy={companion.energy.toFixed(2)} data-mood={companion.mood.toFixed(2)}>
+      <div ref={hitAreaRef} className="pet-hit-area" {...input.bindings}>
         {loadState !== "ready" ? <div className="pet-message pet-overlay">加载中</div> : null}
         <Live2DCanvas
           modelPath={config.pet.modelPath}
@@ -322,7 +405,20 @@ export function PetApp() {
           onReady={handleModelReady}
           onError={handleModelError}
           onMotionFinished={handleMotionFinished}
+          onActionStarted={handleActionStarted}
+          touchHitTestRef={touchHitTestRef}
+          headAnchorRef={headAnchorRef}
+          presenceRef={presenceRef}
         />
+        {behaviorState === "stroking" ? <span className="stroke-touch" aria-hidden="true" /> : null}
+        <div key={visualAction.id} className="pet-gesture" aria-hidden="true">
+          <ActionEffects action={visualAction.action} />
+          {visualAction.action === "Greet" ? <span className="gesture-greeting">你好呀</span> : null}
+          {visualAction.action === "Pat" ? <PatHand /> : null}
+          {visualAction.action === "Curious" ? <span className="gesture-curious">？</span> : null}
+          {visualAction.action === "Happy" ? <span className="gesture-heart">♥</span> : null}
+          {visualAction.action === "Sleep" ? <span className="gesture-sleep">z Z z</span> : null}
+        </div>
       </div>
     </main>
   );

@@ -2,3 +2,5 @@ node_modules/
 docs/
 release/
 relese/
+.tmp/
+test-results*/

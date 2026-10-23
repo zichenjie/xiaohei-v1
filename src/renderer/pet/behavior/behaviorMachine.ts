@@ -1,7 +1,9 @@
 import type { BehaviorMode } from "../../../shared/types.js";
+import type { SoftAction, TouchTarget } from "./companion.js";
 
-export type BehaviorState = "idle" | "hover" | "clicked" | "dragging" | "cooldown" | "error";
+export type BehaviorState = "idle" | "hover" | "clicked" | "dragging" | "stroking" | "cooldown" | "sleeping" | "error";
 export type Live2DAction =
+  | SoftAction
   | "Idle"
   | "Bounce"
   | "Sleep"
@@ -18,10 +20,12 @@ export type Live2DAction =
   | "none";
 
 export type BehaviorEvent =
+  | { type: "action"; action: Live2DAction }
   | { type: "hover:start" }
   | { type: "hover:end" }
-  | { type: "click" }
-  | { type: "double:click" }
+  | { type: "click"; target?: TouchTarget }
+  | { type: "double:click"; target?: TouchTarget }
+  | { type: "sleep:started" }
   | { type: "hold:start" }
   | { type: "hold:end" }
   | { type: "drag:start" }
@@ -40,7 +44,7 @@ export interface BehaviorSnapshot {
 
 export interface BehaviorMachine {
   setMode(nextMode: BehaviorMode): void;
-  send(event: BehaviorEvent): void;
+  send(event: BehaviorEvent): boolean;
   snapshot(): BehaviorSnapshot;
 }
 
@@ -63,60 +67,92 @@ export function createBehaviorMachine(mode: BehaviorMode): BehaviorMachine {
       mode = nextMode;
     },
 
-    send(event: BehaviorEvent): void {
-      if (state === "error" && event.type !== "recover") {
-        nextAction = "none";
-        return;
+    send(event: BehaviorEvent): boolean {
+      nextAction = "none";
+      if (event.type === "action") {
+        state = event.action === "Sleep" ? "sleeping" : ["Idle", "hair"].includes(event.action) ? "idle" : "clicked";
+        nextAction = event.action;
+        return true;
       }
+      if (event.type === "recover") {
+        enterIdle();
+        return true;
+      }
+      if (state === "error") {
+        nextAction = "none";
+        return false;
+      }
+
+      if (event.type === "sleep:started") {
+        state = "sleeping";
+        return true;
+      }
+      if (state === "sleeping" && event.type !== "error") {
+        if ((event.type === "click" || event.type === "double:click") && ["head", "cheekLeft", "cheekRight"].includes(event.target ?? "")) {
+          state = "clicked";
+          nextAction = "Wake";
+          return true;
+        }
+        return false;
+      }
+
+      if (state === "stroking" && event.type !== "hold:end" && event.type !== "error") return false;
+
+      const directTouch = (event.type === "click" || event.type === "double:click") && event.target && event.target !== "none";
 
       if (state === "dragging" && event.type !== "drag:end" && event.type !== "error") {
         nextAction = "none";
-        return;
+        return false;
       }
 
-      if (state === "cooldown" && event.type !== "cooldown:finished" && event.type !== "error") {
+      if (state === "cooldown" && event.type !== "cooldown:finished" && event.type !== "hold:start" && event.type !== "drag:start" && !directTouch && event.type !== "error") {
         nextAction = "none";
-        return;
+        return false;
       }
 
       if (
         state === "clicked" &&
+        !directTouch &&
         event.type !== "motion:finished" &&
         event.type !== "drag:start" &&
         event.type !== "hold:start" &&
         event.type !== "hold:end" &&
         event.type !== "error"
       ) {
-        return;
+        return false;
       }
 
       switch (event.type) {
         case "hover:start":
           state = "hover";
-          nextAction = mode === "active" ? "Curious" : "none";
+          nextAction = "none";
           break;
 
         case "hover:end":
-          enterIdle();
+          state = "idle";
           break;
 
         case "click":
+          if (event.target === "none") return false;
           state = "clicked";
-          nextAction = "Tap";
+          nextAction = event.target === "head" ? "HeadTouch" : event.target === "cheekLeft" ? "CheekLeft"
+            : event.target === "cheekRight" ? "CheekRight" : event.target === "body" ? "BodyTouch" : "Tap";
           break;
 
         case "double:click":
+          if (event.target === "none") return false;
           state = "clicked";
           nextAction = "Happy";
           break;
 
         case "hold:start":
-          state = "clicked";
-          nextAction = "Pat";
+          state = "stroking";
+          nextAction = "Stroke";
           break;
 
         case "hold:end":
           enterCooldown();
+          nextAction = "Idle";
           break;
 
         case "drag:start":
@@ -129,8 +165,9 @@ export function createBehaviorMachine(mode: BehaviorMode): BehaviorMachine {
           break;
 
         case "idle:tick":
-          if (state === "idle") {
-            nextAction = mode === "active" ? "IdleVariant" : "Greet";
+          if (state === "idle" || state === "hover") {
+            state = "idle";
+            nextAction = "IdleVariant";
           }
           break;
 
@@ -141,7 +178,6 @@ export function createBehaviorMachine(mode: BehaviorMode): BehaviorMachine {
           break;
 
         case "cooldown:finished":
-        case "recover":
           enterIdle();
           break;
 
@@ -150,6 +186,7 @@ export function createBehaviorMachine(mode: BehaviorMode): BehaviorMachine {
           nextAction = "none";
           break;
       }
+      return true;
     },
 
     snapshot(): BehaviorSnapshot {

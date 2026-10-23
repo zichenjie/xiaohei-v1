@@ -85,7 +85,11 @@ export function normalizeConfig(input: PartialDeep<AppConfig> | unknown): AppCon
           ? source.pet.modelPath
           : DEFAULT_CONFIG.pet.modelPath,
       followMouse:
-        typeof source.pet?.followMouse === "boolean" ? source.pet.followMouse : DEFAULT_CONFIG.pet.followMouse
+        typeof source.pet?.followMouse === "boolean" ? source.pet.followMouse : DEFAULT_CONFIG.pet.followMouse,
+      initiative: ["quiet", "balanced", "active"].includes(source.pet?.initiative ?? "") ? source.pet!.initiative! : DEFAULT_CONFIG.pet.initiative,
+      autoRest: typeof source.pet?.autoRest === "boolean" ? source.pet.autoRest : DEFAULT_CONFIG.pet.autoRest,
+      quietUntil: typeof source.pet?.quietUntil === "number" && Number.isFinite(source.pet.quietUntil)
+        ? Math.max(0, Math.min(Date.now() + 3600000, source.pet.quietUntil)) : 0
     },
     system: {
       autoLaunch:
